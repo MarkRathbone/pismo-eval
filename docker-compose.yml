@@ -1,0 +1,23 @@
+services:
+  localstack:
+    image: localstack/localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=sqs,dynamodb
+      - DEFAULT_REGION=eu-west-1
+    volumes:
+      - localstack-data:/var/lib/localstack
+
+  processor:
+    build: .
+    depends_on:
+      - localstack
+    environment:
+      - AWS_ENDPOINT=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_REGION=eu-west-1
+
+volumes:
+  localstack-data:
