@@ -5,11 +5,8 @@ import (
 	"event-processor/internal/model"
 	"event-processor/internal/utils"
 	"log"
-	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 )
@@ -17,21 +14,11 @@ import (
 var dbClient *dynamodb.Client
 
 func init() {
-	cfg, err := config.LoadDefaultConfig(context.TODO(),
-		config.WithRegion(os.Getenv("AWS_REGION")),
-		config.WithEndpointResolverWithOptions(utils.LocalResolver()),
-		config.WithCredentialsProvider(aws.NewCredentialsCache(
-			credentials.NewStaticCredentialsProvider(
-				os.Getenv("AWS_ACCESS_KEY_ID"),
-				os.Getenv("AWS_SECRET_ACCESS_KEY"),
-				"",
-			),
-		)),
-	)
+	client, err := utils.NewDynamoDBClient(context.TODO())
 	if err != nil {
-		log.Fatalf("unable to load SDK config, %v", err)
+		log.Fatalf("unable to create DynamoDB client: %v", err)
 	}
-	dbClient = dynamodb.NewFromConfig(cfg)
+	dbClient = client
 }
 
 func SaveEvent(event model.Event) error {
@@ -45,8 +32,9 @@ func SaveEvent(event model.Event) error {
 	}
 
 	_, err = dbClient.PutItem(context.TODO(), &dynamodb.PutItemInput{
-		TableName: &utils.TableName,
+		TableName: aws.String(utils.TableName),
 		Item:      item,
 	})
+
 	return err
 }

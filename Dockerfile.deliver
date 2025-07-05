@@ -1,0 +1,16 @@
+FROM golang:1.24
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y netcat-openbsd && apt-get clean
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN go build -o main ./cmd/deliver
+
+COPY wait-for-localstack.sh .
+
+CMD ["./main"]

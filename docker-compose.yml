@@ -1,23 +1,48 @@
 services:
   localstack:
-    image: localstack/localstack
+    image: localstack/localstack:latest
+    container_name: pismo-eval-localstack
     ports:
       - "4566:4566"
     environment:
-      - SERVICES=sqs,dynamodb
+      - SERVICES=sqs,dynamodb,dynamodbstreams
+      - DEBUG=1
       - DEFAULT_REGION=eu-west-1
     volumes:
       - localstack-data:/var/lib/localstack
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   processor:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.processor
+    container_name: pismo-eval-processor
     depends_on:
-      - localstack
+      localstack:
+        condition: service_healthy
     environment:
-      - AWS_ENDPOINT=http://localstack:4566
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_REGION=eu-west-1
+      - AWS_ENDPOINT=http://localstack:4566
+
+  deliver:
+    build:
+      context: .
+      dockerfile: Dockerfile.deliver
+    container_name: pismo-eval-deliver
+    depends_on:
+      localstack:
+        condition: service_healthy
+    environment:
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_REGION=eu-west-1
+      - AWS_ENDPOINT=http://localstack:4566
 
 volumes:
   localstack-data:

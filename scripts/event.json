@@ -1,0 +1,8 @@
+{
+  "client_id": "client-123",
+  "event_type": "signup",
+  "data": {
+    "email": "test@example.com",
+    "ip": "192.168.1.1"
+  }
+}

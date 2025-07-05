@@ -2,6 +2,7 @@ package processor
 
 import (
 	"encoding/json"
+	"event-processor/internal/delivery"
 	"event-processor/internal/model"
 	"event-processor/internal/storage"
 	"event-processor/internal/validator"
@@ -22,5 +23,8 @@ func HandleMessage(payload string) {
 
 	if err := storage.SaveEvent(evt); err != nil {
 		log.Println("Storage error:", err)
+		return
 	}
+
+	delivery.DispatchEvent(evt)
 }

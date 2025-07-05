@@ -1,21 +1,68 @@
 package utils
 
 import (
+	"context"
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodbstreams"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
 )
 
-var TableName = "Events"
+const TableName = "Events"
 
-func LocalResolver() aws.EndpointResolverWithOptions {
-	endpoint := os.Getenv("AWS_ENDPOINT")
-	signingRegion := os.Getenv("AWS_REGION")
+func NewDynamoDBClient(ctx context.Context) (*dynamodb.Client, error) {
+	cfg, err := config.LoadDefaultConfig(ctx,
+		config.WithRegion("eu-west-1"),
+	)
+	if err != nil {
+		return nil, err
+	}
 
-	return aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-		return aws.Endpoint{
-			URL:           endpoint,
-			SigningRegion: signingRegion,
-		}, nil
-	})
+	customEndpoint := os.Getenv("AWS_ENDPOINT")
+	if customEndpoint != "" {
+		return dynamodb.NewFromConfig(cfg, func(o *dynamodb.Options) {
+			o.BaseEndpoint = aws.String(customEndpoint)
+		}), nil
+	}
+
+	return dynamodb.NewFromConfig(cfg), nil
+}
+
+func NewSQSClient(ctx context.Context) (*sqs.Client, error) {
+	cfg, err := config.LoadDefaultConfig(ctx,
+		config.WithRegion("eu-west-1"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	customEndpoint := os.Getenv("AWS_ENDPOINT")
+	if customEndpoint != "" {
+		return sqs.NewFromConfig(cfg, func(o *sqs.Options) {
+			o.BaseEndpoint = aws.String(customEndpoint)
+		}), nil
+	}
+
+	return sqs.NewFromConfig(cfg), nil
+}
+
+func NewDynamoDBStreamClient(ctx context.Context) (*dynamodbstreams.Client, error) {
+	cfg, err := config.LoadDefaultConfig(ctx,
+		config.WithRegion("eu-west-1"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	customEndpoint := os.Getenv("AWS_ENDPOINT")
+	if customEndpoint != "" {
+		return dynamodbstreams.NewFromConfig(cfg, func(o *dynamodbstreams.Options) {
+			o.BaseEndpoint = aws.String(customEndpoint)
+		}), nil
+	}
+
+	return dynamodbstreams.NewFromConfig(cfg), nil
 }
