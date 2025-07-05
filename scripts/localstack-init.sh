@@ -28,8 +28,8 @@ DLQ_ARN=$(aws --endpoint-url="$ENDPOINT" --region="$REGION" \
       --query "Attributes.QueueArn" \
       --output text)
 
-echo "  • DLQ URL: $DLQ_URL"
-echo "  • DLQ ARN: $DLQ_ARN"
+echo "  DLQ URL: $DLQ_URL"
+echo "  DLQ ARN: $DLQ_ARN"
 
 echo "Creating main SQS queue: $QUEUE_NAME (redrive to $DLQ_NAME after 5 receives)"
 RAW_POLICY=$(printf '{"deadLetterTargetArn":"%s","maxReceiveCount":%d}' "$DLQ_ARN" 5)
@@ -62,7 +62,7 @@ aws --endpoint-url="$ENDPOINT" --region="$REGION" dynamodb put-item \
   --table-name "$ROUTES_TABLE" \
   --item '{
     "client_id": {"S": "client-123"},
-    "target_url": {"S": "https://webhook.site/c59a9948-c50f-4f07-8451-3a38c6d81276"}
+    "target_url": {"S": "http://mock-sink:8080"}
   }'
 
 echo "Sending test event to SQS…"

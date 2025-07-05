@@ -7,7 +7,6 @@ services:
     environment:
       - SERVICES=sqs,dynamodb,dynamodbstreams
       - DEFAULT_REGION=eu-west-1
-      - DEBUG=1
     volumes:
       - localstack-data:/var/lib/localstack
     healthcheck:
@@ -59,6 +58,12 @@ services:
       - AWS_ENDPOINT=http://localstack:4566
       - QUEUE_NAME=events
       - ROUTES_TABLE=routes
+
+  mock-sink:
+    image: hashicorp/http-echo
+    command: ["-listen=:8080","-text=OK"]
+    ports:
+      - "8080:8080"
 
 volumes:
   localstack-data:

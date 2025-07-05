@@ -6,7 +6,7 @@ set -e
 TABLE_NAME="${ROUTES_TABLE:-routes}"
 QUEUE_NAME="${QUEUE_NAME:-events}"
 
-echo "⏳ waiting for DynamoDB table \"$TABLE_NAME\"…"
+echo "waiting for DynamoDB table \"$TABLE_NAME\"…"
 until aws \
   --endpoint-url="$AWS_ENDPOINT" \
   --region="$AWS_REGION" \
@@ -16,7 +16,7 @@ until aws \
 done
 echo "table \"$TABLE_NAME\" is ready"
 
-echo "⏳ waiting for SQS queue \"$QUEUE_NAME\"…"
+echo "waiting for SQS queue \"$QUEUE_NAME\"…"
 until aws \
   --endpoint-url="$AWS_ENDPOINT" \
   --region="$AWS_REGION" \

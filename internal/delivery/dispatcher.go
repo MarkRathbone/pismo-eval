@@ -73,5 +73,9 @@ func DispatchEvent(event model.Event) error {
 		return fmt.Errorf("dispatch returned status %d for client_id %s", resp.StatusCode, event.ClientID)
 	}
 
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("delivery failed with status %d", resp.StatusCode)
+	}
+
 	return nil
 }

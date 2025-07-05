@@ -85,9 +85,9 @@ Consumes messages from SQS:
 
 ### Setup
 
-1. Adjust your end point at line 43 of ```scripts/localstack-init.sh```. I used [webhook.site](https://webhook.site).
+1. You may wish to adjust your end point at line 43 of ```scripts/localstack-init.sh```. I used a locally hosted http mock sink.
 
-1. Start the environment
+2. Start the environment
 ```docker-compose up --build```
 
 
@@ -95,7 +95,8 @@ Consumes messages from SQS:
 
 This script performs the following:
 
-- Creates the `events` SQS queue
+- Creates the `events` queue
+- Creates the `events-dlq` DLQ
 - Creates the `Events` and `routes` DynamoDB tables
 - Adds test route for `client-123`
 - Sends a test event to SQS
@@ -129,7 +130,6 @@ This script performs the following:
 ## Notes
 
 - Only trusted producers should write to the SQS queue.
-- Delivery failures are logged; consider implementing a retry queue or Dead Letter Queue (DLQ).
 - Real deployments should include:
   - Authentication and authorization
   - Retry strategies and exponential backoff
