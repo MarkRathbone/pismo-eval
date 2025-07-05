@@ -7,13 +7,11 @@ export AWS_SECRET_ACCESS_KEY=test
 
 # Config
 REGION="eu-west-1"
-ENDPOINT="http://localhost:4566"
+ENDPOINT="http://localstack:4566"
 QUEUE_NAME="events"
 EVENTS_TABLE="Events"
 ROUTES_TABLE="routes"
 QUEUE_URL="$ENDPOINT/000000000000/$QUEUE_NAME"
-
-echo "LocalStack is up."
 
 # Create SQS queue
 echo "Creating SQS queue: $QUEUE_NAME"

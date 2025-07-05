@@ -7,6 +7,8 @@ import (
 	"event-processor/internal/storage"
 	"event-processor/internal/validator"
 	"log"
+	"os"
+	"strings"
 )
 
 func HandleMessage(payload string) {
@@ -26,5 +28,7 @@ func HandleMessage(payload string) {
 		return
 	}
 
-	delivery.DispatchEvent(evt)
+	if strings.ToLower(os.Getenv("DIRECT_DISPATCH")) == "true" {
+		delivery.DispatchEvent(evt)
+	}
 }

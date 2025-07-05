@@ -20,8 +20,16 @@ func StartConsumer(sqsClient *sqs.Client, queueURL string, handler func(string))
 			continue
 		}
 
+		// we currently delete even if a message fails to send. this needs a fix
 		for _, msg := range out.Messages {
 			handler(*msg.Body)
+			_, err := sqsClient.DeleteMessage(context.TODO(), &sqs.DeleteMessageInput{
+				QueueUrl:      &queueURL,
+				ReceiptHandle: msg.ReceiptHandle,
+			})
+			if err != nil {
+				log.Println("Delete error:", err)
+			}
 		}
 
 		time.Sleep(1 * time.Second)

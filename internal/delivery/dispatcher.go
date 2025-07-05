@@ -15,13 +15,22 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
-func getTargetURL(clientID string) (string, error) {
-	dbClient, err := utils.NewDynamoDBClient(context.TODO())
+var routesDBClient *dynamodb.Client
+
+func init() {
+	client, err := utils.NewDynamoDBClient(context.TODO())
 	if err != nil {
-		return "", fmt.Errorf("failed to create DynamoDB client: %w", err)
+		log.Fatalf("failed to create DynamoDB client: %v", err)
+	}
+	routesDBClient = client
+}
+
+func getTargetURL(clientID string) (string, error) {
+	if routesDBClient == nil {
+		return "", fmt.Errorf("dynamodb client not initialized")
 	}
 
-	result, err := dbClient.GetItem(context.TODO(), &dynamodb.GetItemInput{
+	result, err := routesDBClient.GetItem(context.TODO(), &dynamodb.GetItemInput{
 		TableName: aws.String("routes"),
 		Key: map[string]types.AttributeValue{
 			"client_id": &types.AttributeValueMemberS{Value: clientID},

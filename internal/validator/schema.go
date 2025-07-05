@@ -2,15 +2,26 @@ package validator
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/xeipuuv/gojsonschema"
 )
 
+var schema *gojsonschema.Schema
+
+func init() {
+	loader := gojsonschema.NewReferenceLoader("file://schema/event_schema.json")
+	var err error
+	schema, err = gojsonschema.NewSchema(loader)
+	if err != nil {
+		log.Fatalf("unable to load schema: %v", err)
+	}
+}
+
 func Validate(payload []byte) error {
-	schemaLoader := gojsonschema.NewReferenceLoader("file://schema/event_schema.json")
 	documentLoader := gojsonschema.NewBytesLoader(payload)
 
-	result, err := gojsonschema.Validate(schemaLoader, documentLoader)
+	result, err := schema.Validate(documentLoader)
 	if err != nil {
 		return err
 	}

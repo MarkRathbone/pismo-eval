@@ -11,6 +11,4 @@ COPY . .
 
 RUN go build -o main ./cmd/processor
 
-COPY wait-for-localstack.sh .
-
 CMD ["./main"]

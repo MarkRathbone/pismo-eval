@@ -16,19 +16,33 @@ services:
       timeout: 5s
       retries: 10
 
-  processor:
-    build:
-      context: .
-      dockerfile: Dockerfile.processor
-    container_name: pismo-eval-processor
+  localstack-init:
+    image: amazon/aws-cli
+    container_name: pismo-eval-localstack-init
+    volumes:
+      - ./scripts/localstack-init.sh:/init.sh
+    entrypoint: ["/bin/sh", "/init.sh"]
     depends_on:
       localstack:
         condition: service_healthy
     environment:
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
+
+  processor:
+    build:
+      context: .
+      dockerfile: Dockerfile.processor
+    container_name: pismo-eval-processor
+    depends_on:
+      localstack-init:
+        condition: service_completed_successfully
+    environment:
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
       - AWS_REGION=eu-west-1
       - AWS_ENDPOINT=http://localstack:4566
+      - DIRECT_DISPATCH=true
 
   deliver:
     build:
@@ -36,8 +50,8 @@ services:
       dockerfile: Dockerfile.deliver
     container_name: pismo-eval-deliver
     depends_on:
-      localstack:
-        condition: service_healthy
+      localstack-init:
+        condition: service_completed_successfully
     environment:
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test

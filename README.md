@@ -65,6 +65,7 @@ Consumes messages from SQS:
 
 - Validates against JSON schema
 - Stores valid events in DynamoDB (`Events` table)
+- Optionally dispatches events immediately when `DIRECT_DISPATCH=true`
 
 ### `/cmd/deliver`
 
@@ -84,13 +85,11 @@ Consumes messages from SQS:
 
 ### Setup
 
-```bash
-# 1. Start the environment
-docker-compose up --build
+1. Adjust your end point at line 43 of ```scripts/localstack-init.sh```. I used [webhook.site](https://webhook.site).
 
-# 2. Wait for localstack to be ready, then run setup:
-./scripts/localstack.sh
-```
+1. Start the environment
+```docker-compose up --build```
+
 
 ## Setup Script Summary
 
@@ -100,21 +99,6 @@ This script performs the following:
 - Creates the `Events` and `routes` DynamoDB tables
 - Adds test route for `client-123`
 - Sends a test event to SQS
-
----
-
-## Webhook Testing
-
-Client route example (replace with your own [webhook.site](https://webhook.site) URL):
-
-```bash
-aws --endpoint-url=http://localhost:4566 dynamodb put-item \
-  --table-name routes \
-  --item '{
-    "client_id": {"S": "client-123"},
-    "target_url": {"S": "https://webhook.site/c59a9948-c50f-4f07-8451-3a38c6d81276"}
-  }'
-```
 
 ## Project Structure
 
@@ -134,7 +118,7 @@ aws --endpoint-url=http://localhost:4566 dynamodb put-item \
 ├── schema
 │   └── event_schema.json
 ├── scripts
-│   ├── localstack.sh           # Bootstrap script
+│   ├── localstack-init.sh      # Bootstrap script
 │   ├── send-sqs-event.sh       # Manual test event injector
 │   ├── event.json              # Event payload for send-sqs-event.sh
 ├── Dockerfile.*                # Separate Dockerfiles per service
