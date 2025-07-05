@@ -49,34 +49,29 @@ func getTargetURL(clientID string) (string, error) {
 	return "", nil
 }
 
-func DispatchEvent(event model.Event) {
+func DispatchEvent(event model.Event) error {
 	target, err := getTargetURL(event.ClientID)
 	if err != nil {
-		log.Printf("Error fetching route for %s: %v", event.ClientID, err)
-		return
+		return fmt.Errorf("fetch route for client_id %s: %w", event.ClientID, err)
 	}
 	if target == "" {
-		log.Printf("No route for client_id: %s", event.ClientID)
-		return
+		return fmt.Errorf("no route configured for client_id %s", event.ClientID)
 	}
 
 	payload, err := json.Marshal(event)
 	if err != nil {
-		log.Println("Marshal error:", err)
-		return
+		return fmt.Errorf("marshal event: %w", err)
 	}
 
 	resp, err := http.Post(target, "application/json", bytes.NewReader(payload))
 	if err != nil {
-		log.Printf("Failed to deliver event: %v", err)
-		return
+		return fmt.Errorf("http post to %s: %w", target, err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		log.Printf("Delivery failed with status: %d", resp.StatusCode)
-		return
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("dispatch returned status %d for client_id %s", resp.StatusCode, event.ClientID)
 	}
 
-	log.Printf("Event delivered to %s successfully", target)
+	return nil
 }

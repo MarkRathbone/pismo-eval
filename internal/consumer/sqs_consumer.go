@@ -8,7 +8,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 )
 
-func StartConsumer(sqsClient *sqs.Client, queueURL string, handler func(string)) {
+type handlerFunc func(string) error
+
+func StartConsumer(sqsClient *sqs.Client, queueURL string, handler handlerFunc) {
 	for {
 		out, err := sqsClient.ReceiveMessage(context.TODO(), &sqs.ReceiveMessageInput{
 			QueueUrl:            &queueURL,
@@ -17,12 +19,16 @@ func StartConsumer(sqsClient *sqs.Client, queueURL string, handler func(string))
 		})
 		if err != nil {
 			log.Println("Receive error:", err)
+			time.Sleep(time.Second)
 			continue
 		}
 
-		// we currently delete even if a message fails to send. this needs a fix
 		for _, msg := range out.Messages {
-			handler(*msg.Body)
+			if err := handler(*msg.Body); err != nil {
+				log.Printf("handler error for message %q: %v", *msg.MessageId, err)
+				continue
+			}
+
 			_, err := sqsClient.DeleteMessage(context.TODO(), &sqs.DeleteMessageInput{
 				QueueUrl:      &queueURL,
 				ReceiptHandle: msg.ReceiptHandle,
