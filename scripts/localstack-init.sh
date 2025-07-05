@@ -1,88 +1,75 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env sh
+set -e
 
-export AWS_ACCESS_KEY_ID=test
-export AWS_SECRET_ACCESS_KEY=test
+# credentials (fallback to "test" if unset)
+export AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-test}
+export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-test}
 
-REGION="eu-west-1"
-ENDPOINT="http://localstack:4566"
-AWS_CLI="aws --endpoint-url=${ENDPOINT} --region=${REGION}"
+# config
+REGION="${AWS_REGION:-eu-west-1}"
+ENDPOINT="${AWS_ENDPOINT:-http://localstack:4566}"
 
-# Queue names
-MAIN_QUEUE_NAME="events"
-DLQ_NAME="${MAIN_QUEUE_NAME}-dlq"
-
-# DynamoDB tables
+DLQ_NAME="events-dlq"
+QUEUE_NAME="events"
 EVENTS_TABLE="Events"
 ROUTES_TABLE="routes"
 
-echo "Waiting for LocalStack…"
-until curl -s ${ENDPOINT}/_localstack/health | grep -q '"sqs":.*"running"' \
-   && grep -q '"dynamodb":.*"running"'; do
-  sleep 1
-done
+echo "Creating Dead-Letter Queue: $DLQ_NAME"
+aws --endpoint-url="$ENDPOINT" --region="$REGION" \
+    sqs create-queue --queue-name "$DLQ_NAME" >/dev/null
 
-echo "Creating Dead-Letter Queue: ${DLQ_NAME}"
-DLQ_URL=$(${AWS_CLI} sqs create-queue \
-  --queue-name "${DLQ_NAME}" \
-  --query 'QueueUrl' --output text)
-echo "  • DLQ URL: ${DLQ_URL}"
+# fetch DLQ URL & ARN
+DLQ_URL=$(aws --endpoint-url="$ENDPOINT" --region="$REGION" \
+    sqs get-queue-url --queue-name "$DLQ_NAME" --output text)
+DLQ_ARN=$(aws --endpoint-url="$ENDPOINT" --region="$REGION" \
+    sqs get-queue-attributes \
+      --queue-url "$DLQ_URL" \
+      --attribute-names QueueArn \
+      --query "Attributes.QueueArn" \
+      --output text)
 
-echo "Fetching DLQ ARN"
-DLQ_ARN=$(${AWS_CLI} sqs get-queue-attributes \
-  --queue-url "${DLQ_URL}" \
-  --attribute-names QueueArn \
-  --query 'Attributes.QueueArn' --output text)
-echo "  • DLQ ARN: ${DLQ_ARN}"
+echo "  • DLQ URL: $DLQ_URL"
+echo "  • DLQ ARN: $DLQ_ARN"
 
-echo "Creating main SQS queue: ${MAIN_QUEUE_NAME} with RedrivePolicy → ${DLQ_NAME} after 5 receives"
-REDRIVE_POLICY=$(
-  jq -c -n \
-    --arg target "${DLQ_ARN}" \
-    --argjson max 5 \
-    '{deadLetterTargetArn: $target, maxReceiveCount: $max}'
-)
-MAIN_QUEUE_URL=$(${AWS_CLI} sqs create-queue \
-  --queue-name "${MAIN_QUEUE_NAME}" \
-  --attributes RedrivePolicy="${REDRIVE_POLICY}" \
-  --query 'QueueUrl' --output text)
-echo "  • Main queue URL: ${MAIN_QUEUE_URL}"
-echo
+echo "Creating main SQS queue: $QUEUE_NAME (redrive to $DLQ_NAME after 5 receives)"
+RAW_POLICY=$(printf '{"deadLetterTargetArn":"%s","maxReceiveCount":%d}' "$DLQ_ARN" 5)
+ESCAPED_POLICY=$(printf '%s' "$RAW_POLICY" | sed 's/"/\\"/g')
 
-echo "Setting QUEUE_URL environment variable for downstream steps"
-export QUEUE_URL="${MAIN_QUEUE_URL}"
-echo "  • QUEUE_URL=${QUEUE_URL}"
-echo
+INPUT_JSON=$(printf \
+  '{"QueueName":"%s","Attributes":{"RedrivePolicy":"%s"}}' \
+  "$QUEUE_NAME" "$ESCAPED_POLICY")
 
-echo "Creating DynamoDB table: ${EVENTS_TABLE}"
-${AWS_CLI} dynamodb create-table \
-  --table-name "${EVENTS_TABLE}" \
+aws --endpoint-url="$ENDPOINT" --region="$REGION" \
+    sqs create-queue --cli-input-json "$INPUT_JSON"
+
+echo "Creating DynamoDB table: $EVENTS_TABLE"
+aws --endpoint-url="$ENDPOINT" --region="$REGION" dynamodb create-table \
+  --table-name "$EVENTS_TABLE" \
   --attribute-definitions AttributeName=client_id,AttributeType=S \
   --key-schema AttributeName=client_id,KeyType=HASH \
   --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
   --stream-specification StreamEnabled=true,StreamViewType=NEW_IMAGE || true
-echo
 
-echo "Creating DynamoDB table: ${ROUTES_TABLE}"
-${AWS_CLI} dynamodb create-table \
-  --table-name "${ROUTES_TABLE}" \
+echo "Creating DynamoDB table: $ROUTES_TABLE"
+aws --endpoint-url="$ENDPOINT" --region="$REGION" dynamodb create-table \
+  --table-name "$ROUTES_TABLE" \
   --attribute-definitions AttributeName=client_id,AttributeType=S \
   --key-schema AttributeName=client_id,KeyType=HASH \
   --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 || true
-echo
 
-echo "Seeding routes table with client_id → target_url"
-${AWS_CLI} dynamodb put-item \
-  --table-name "${ROUTES_TABLE}" \
+echo "Seeding routes table with client_id ⇒ target_url"
+aws --endpoint-url="$ENDPOINT" --region="$REGION" dynamodb put-item \
+  --table-name "$ROUTES_TABLE" \
   --item '{
     "client_id": {"S": "client-123"},
     "target_url": {"S": "https://webhook.site/c59a9948-c50f-4f07-8451-3a38c6d81276"}
   }'
-echo
 
-echo "Sending test event to SQS (${MAIN_QUEUE_NAME})"
-${AWS_CLI} sqs send-message \
-  --queue-url "${QUEUE_URL}" \
+echo "Sending test event to SQS…"
+QUEUE_URL=$(aws --endpoint-url="$ENDPOINT" --region="$REGION" \
+    sqs get-queue-url --queue-name "$QUEUE_NAME" --output text)
+aws --endpoint-url="$ENDPOINT" --region="$REGION" sqs send-message \
+  --queue-url "$QUEUE_URL" \
   --message-body '{
     "client_id": "client-123",
     "event_type": "signup",
@@ -91,6 +78,5 @@ ${AWS_CLI} sqs send-message \
       "ip": "192.168.1.1"
     }
   }'
-echo
 
-echo "Setup complete. Watch processor logs for output."
+echo "localstack-init complete."

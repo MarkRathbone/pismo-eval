@@ -8,7 +8,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 )
 
-func StartConsumer(sqsClient *sqs.Client, queueURL string, handler func(string) error) {
+type handlerFunc func(string) error
+
+func StartConsumer(sqsClient *sqs.Client, queueURL string, handler handlerFunc) {
 	for {
 		out, err := sqsClient.ReceiveMessage(context.TODO(), &sqs.ReceiveMessageInput{
 			QueueUrl:            &queueURL,
@@ -17,12 +19,13 @@ func StartConsumer(sqsClient *sqs.Client, queueURL string, handler func(string) 
 		})
 		if err != nil {
 			log.Println("Receive error:", err)
+			time.Sleep(time.Second)
 			continue
 		}
 
 		for _, msg := range out.Messages {
 			if err := handler(*msg.Body); err != nil {
-				log.Printf("Handler error for message %s: %v", *msg.MessageId, err)
+				log.Printf("handler error for message %q: %v", *msg.MessageId, err)
 				continue
 			}
 
@@ -31,7 +34,7 @@ func StartConsumer(sqsClient *sqs.Client, queueURL string, handler func(string) 
 				ReceiptHandle: msg.ReceiptHandle,
 			})
 			if err != nil {
-				log.Printf("Delete error for message %s: %v", *msg.MessageId, err)
+				log.Println("Delete error:", err)
 			}
 		}
 
