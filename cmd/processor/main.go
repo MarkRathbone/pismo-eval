@@ -2,10 +2,11 @@ package main
 
 import (
 	"context"
-	"event-processor/internal/consumer"
-	"event-processor/internal/processor"
 	"log"
 	"os"
+
+	"event-processor/internal/consumer"
+	"event-processor/internal/processor"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -17,15 +18,8 @@ func main() {
 
 	endpoint := os.Getenv("AWS_ENDPOINT")
 	region := os.Getenv("AWS_REGION")
-	queueName := "events"
-
 	if endpoint == "" || region == "" {
-		if endpoint == "" {
-			log.Println("Missing required environment variable: AWS_ENDPOINT")
-		}
-		if region == "" {
-			log.Println("Missing required environment variable: AWS_REGION")
-		}
+		log.Fatal("Both AWS_ENDPOINT and AWS_REGION must be set")
 	}
 
 	cfg, err := config.LoadDefaultConfig(context.TODO(),
@@ -39,13 +33,24 @@ func main() {
 		o.BaseEndpoint = aws.String(endpoint)
 	})
 
-	queueOutput, err := sqsClient.GetQueueUrl(context.TODO(), &sqs.GetQueueUrlInput{
-		QueueName: aws.String(queueName),
-	})
-	if err != nil {
-		log.Fatalf("Unable to get queue URL for %s: %v", queueName, err)
+	var queueURL string
+	if envURL := os.Getenv("QUEUE_URL"); envURL != "" {
+		queueURL = envURL
+		log.Printf("Using QUEUE_URL from env: %s", queueURL)
+	} else {
+		queueName := os.Getenv("QUEUE_NAME")
+		if queueName == "" {
+			queueName = "events"
+		}
+		qOut, err := sqsClient.GetQueueUrl(context.TODO(), &sqs.GetQueueUrlInput{
+			QueueName: aws.String(queueName),
+		})
+		if err != nil {
+			log.Fatalf("Unable to get queue URL for %s: %v", queueName, err)
+		}
+		queueURL = aws.ToString(qOut.QueueUrl)
+		log.Printf("Resolved queue URL for %s: %s", queueName, queueURL)
 	}
-	queueURL := aws.ToString(queueOutput.QueueUrl)
 
 	consumer.StartConsumer(sqsClient, queueURL, processor.HandleMessage)
 }
