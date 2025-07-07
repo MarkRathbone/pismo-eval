@@ -113,33 +113,21 @@ Once the deployment is ready, you can start using the deployment. The send-*.sh 
 ```
 .
 ├── cmd
-│   ├── deliver      # DynamoDB stream consumer and dispatcher
-│   └── processor    # SQS consumer and validator
+│   ├── deliver           # DynamoDB stream consumer and dispatcher
+│   └── processor         # SQS consumer and validator
 ├── internal
-│   ├── consumer     # SQS poller
-│   ├── delivery     # HTTP dispatcher, stream logic
-│   ├── model        # Event struct
-│   ├── processor    # Core handler
-│   ├── storage      # DynamoDB integration
-│   ├── validator    # JSON schema validation
-│   └── utils        # Helper functions
-├── schema
-│   └── event_schema.json
-├── localstack-scripts
-│   ├── localstack-init.sh                # Bootstrap script
-│   ├── wait-for-queue.sh                 # Waits for the queue to be ready
-│   ├── wait-for-table-and-queue.sh       # Waits for the table and queue to be ready
-├── scripts
-│   ├── check-*-dlq.sh                    # Check the contents of the dlqs
-│   ├── check-dynamodb.sh                 # Check the contents of DynamoDB
-│   ├── check-sqs.sh                      # Check the contents of events queue
-│   ├── redrive-dlq-to-sqs.sh             # Starts a redrive from the dlq to the events queue
-│   ├── send-bad-client-sqs-event.sh      # Sends an event with a client-id that has no route.
-│   ├── send-bad-data-sqs-event.sh        # Sends an event where data is a string not an object
-│   ├── send-good-sqs-event.sh            # Sends a good event
-│   ├── *.json                            # Event json data to be used with send-*.sh scripts
-├── Dockerfile.*                          # Separate Dockerfiles per service
-├── docker-compose.yml                    # Compose services (localstack, processor, deliver)
+│   ├── consumer          # SQS poller
+│   ├── delivery          # HTTP dispatcher, stream logic
+│   ├── model             # Event struct
+│   ├── processor         # Core handler
+│   ├── storage           # DynamoDB integration
+│   ├── validator         # JSON schema validation
+│   └── utils             # Helper functions
+├── schema                # Event json schema
+├── localstack-scripts    # Scripts used during localstack initialization
+├── scripts               # Useful scripts for testing
+├── Dockerfile.*          # Separate Dockerfiles per service
+├── docker-compose.yml    # Compose services (localstack, processor, deliver)
 └── README.md
 ```
 
