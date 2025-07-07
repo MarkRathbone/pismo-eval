@@ -2,109 +2,145 @@ package delivery
 
 import (
 	"context"
-	"encoding/json"
-	"event-processor/internal/model"
-	"event-processor/internal/utils"
-	"fmt"
 	"log"
 	"time"
 
+	"event-processor/internal/model"
+	"event-processor/internal/utils"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	ddb "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodbstreams"
-	stream "github.com/aws/aws-sdk-go-v2/service/dynamodbstreams/types"
+	stream "github.com/aws/aws-sdk-go-v2/service/dynamodbstreams"
+	streamTypes "github.com/aws/aws-sdk-go-v2/service/dynamodbstreams/types"
+	"github.com/cenkalti/backoff/v4"
+	"golang.org/x/sync/errgroup"
 )
 
-func StartStreamProcessor() error {
-	dbClient, err := utils.NewDynamoDBClient(context.TODO())
+func StartStreamProcessor(ctx context.Context) error {
+	ddbClient, err := utils.NewDynamoDBClient(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to create DynamoDB client: %w", err)
+		return err
 	}
-
-	output, err := dbClient.DescribeTable(context.TODO(), &dynamodb.DescribeTableInput{
+	descOut, err := ddbClient.DescribeTable(ctx, &dynamodb.DescribeTableInput{
 		TableName: aws.String("Events"),
 	})
 	if err != nil {
-		log.Fatalf("Failed to describe table: %v", err)
+		return err
 	}
+	streamArn := aws.ToString(descOut.Table.LatestStreamArn)
 
-	streamArn := aws.ToString(output.Table.LatestStreamArn)
-	if streamArn == "" {
-		log.Fatal("Stream is not enabled on table or ARN is empty")
-	}
-
-	client, err := utils.NewDynamoDBStreamClient(context.TODO())
+	streamClient, err := utils.NewDynamoDBStreamClient(ctx)
 	if err != nil {
 		return err
 	}
-
-	streamDesc, err := client.DescribeStream(context.TODO(), &dynamodbstreams.DescribeStreamInput{
-		StreamArn: &streamArn,
+	sDesc, err := streamClient.DescribeStream(ctx, &stream.DescribeStreamInput{
+		StreamArn: aws.String(streamArn),
 	})
 	if err != nil {
 		return err
 	}
 
-	for _, shard := range streamDesc.StreamDescription.Shards {
-		go processShard(client, streamArn, shard)
+	g, ctx := errgroup.WithContext(ctx)
+
+	for _, shard := range sDesc.StreamDescription.Shards {
+		shard := shard
+		g.Go(func() error {
+			return processShard(ctx, streamClient, streamArn, shard, g)
+		})
 	}
 
-	select {}
+	if err := g.Wait(); err != nil {
+		if err == context.Canceled {
+			log.Println("Delivery: shutdown complete")
+			return nil
+		}
+		return err
+	}
+	log.Println("Delivery: all shards and dispatches completed")
+	return nil
 }
 
-func processShard(client *dynamodbstreams.Client, streamArn string, shard stream.Shard) {
-	iteratorOut, err := client.GetShardIterator(context.TODO(), &dynamodbstreams.GetShardIteratorInput{
-		StreamArn:         &streamArn,
+func processShard(
+	ctx context.Context,
+	client *stream.Client,
+	streamArn string,
+	shard streamTypes.Shard,
+	g *errgroup.Group,
+) error {
+	shardID := aws.ToString(shard.ShardId)
+
+	iterOut, err := client.GetShardIterator(ctx, &stream.GetShardIteratorInput{
+		StreamArn:         aws.String(streamArn),
 		ShardId:           shard.ShardId,
-		ShardIteratorType: stream.ShardIteratorTypeTrimHorizon,
+		ShardIteratorType: streamTypes.ShardIteratorTypeTrimHorizon,
 	})
 	if err != nil {
-		log.Println("Iterator error:", err)
-		return
+		return err
 	}
+	sharder := iterOut.ShardIterator
 
-	shardIterator := iteratorOut.ShardIterator
-
-	for shardIterator != nil {
-		out, err := client.GetRecords(context.TODO(), &dynamodbstreams.GetRecordsInput{
-			ShardIterator: shardIterator,
-		})
-		if err != nil {
-			log.Println("Record fetch error:", err)
-			return
+	for sharder != nil {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
 		}
 
-		for _, record := range out.Records {
-			if record.Dynamodb.NewImage == nil {
-				continue
+		var recordsOut *stream.GetRecordsOutput
+		bo := backoff.NewExponentialBackOff()
+		bo.MaxElapsedTime = time.Minute
+		if err := backoff.Retry(func() error {
+			var err error
+			recordsOut, err = client.GetRecords(ctx, &stream.GetRecordsInput{
+				ShardIterator: sharder,
+			})
+			return err
+		}, bo); err != nil {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
 			}
-
-			jsonBytes, err := json.Marshal(record.Dynamodb.NewImage)
-			if err != nil {
-				log.Println("Marshal error:", err)
-				continue
-			}
-
-			var ddbImage map[string]ddb.AttributeValue
-			err = json.Unmarshal(jsonBytes, &ddbImage)
-			if err != nil {
-				log.Println("Unmarshal error:", err)
-				continue
-			}
-
-			var event model.Event
-			err = attributevalue.UnmarshalMap(ddbImage, &event)
-			if err != nil {
-				log.Println("Attribute unmarshal error:", err)
-				continue
-			}
-
-			go DispatchEvent(event)
+			log.Printf("Shard %s: persistent GetRecords error: %v", shardID, err)
+			time.Sleep(10 * time.Second)
+			continue
 		}
 
-		shardIterator = out.NextShardIterator
-		time.Sleep(2 * time.Second)
+		for _, rec := range recordsOut.Records {
+			if rec.Dynamodb.NewImage == nil {
+				continue
+			}
+			img := rec.Dynamodb.NewImage
+			rawClient, ok1 := img["client_id"].(*streamTypes.AttributeValueMemberS)
+			rawType, ok2 := img["event_type"].(*streamTypes.AttributeValueMemberS)
+			rawData, ok3 := img["data"].(*streamTypes.AttributeValueMemberS)
+			if !ok1 || !ok2 || !ok3 {
+				continue
+			}
+
+			evt := model.Event{
+				ClientID:  rawClient.Value,
+				EventType: rawType.Value,
+				Data:      []byte(rawData.Value),
+			}
+
+			g.Go(func() error {
+				if err := DispatchEvent(ctx, evt); err != nil {
+					log.Printf("Shard %s: DispatchEvent error: %v", shardID, err)
+				}
+				return nil
+			})
+		}
+
+		sharder = recordsOut.NextShardIterator
+
+		select {
+		case <-time.After(2 * time.Second):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
+
+	log.Printf("Shard %s: drained, exiting", shardID)
+	return nil
 }

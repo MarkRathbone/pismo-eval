@@ -1,6 +1,6 @@
 module event-processor
 
-go 1.22
+go 1.23.0
 
 toolchain go1.24.4
 
@@ -11,7 +11,9 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.44.0
 	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.25.6
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.29.1
+	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/xeipuuv/gojsonschema v1.2.0
+	golang.org/x/sync v0.15.0
 )
 
 require (

@@ -12,7 +12,7 @@ RUN go mod download
 COPY . .
 RUN go build -o main ./cmd/deliver
 
-COPY scripts/wait-for-table-and-queue.sh /app/wait-for-table-and-queue.sh
+COPY localstack-scripts/wait-for-table-and-queue.sh /app/wait-for-table-and-queue.sh
 RUN chmod +x /app/wait-for-table-and-queue.sh
 
 ENTRYPOINT ["/app/wait-for-table-and-queue.sh", "./main"]

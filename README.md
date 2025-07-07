@@ -20,6 +20,8 @@ Each event must:
 
 This project implements this pipeline using **SQS**, **DynamoDB**, and **DynamoDB Streams**, simulated locally with **LocalStack**.
 
+Although beyond the scope of this task, I also developed a simple deliverer service, delivering data to a http sink. 
+
 ---
 
 ## Architecture Overview
@@ -72,6 +74,7 @@ Consumes messages from SQS:
 - Subscribes to DynamoDB stream
 - Looks up target URL in `routes` table
 - Forwards event to webhook via HTTP POST
+- Moves events to a DLQ for further inspection on failed delivery
 
 ---
 
@@ -80,26 +83,30 @@ Consumes messages from SQS:
 ### Prerequisites
 
 - Docker + Docker Compose
-- Go >= 1.24
+- Go
 - aws-cli
 
 ### Setup
 
-1. You may wish to adjust your end point at line 43 of ```scripts/localstack-init.sh```. I used a locally hosted http mock sink.
+1. You may wish to adjust your end point in the ```scripts/localstack-init.sh```. I used a locally hosted http mock sink.
 
 2. Start the environment
-```docker-compose up --build```
-
+```docker compose up --build```
 
 ## Setup Script Summary
 
-This script performs the following:
+This localstack-init script performs the following:
 
-- Creates the `events` queue
-- Creates the `events-dlq` DLQ
-- Creates the `Events` and `routes` DynamoDB tables
-- Adds test route for `client-123`
-- Sends a test event to SQS
+- Creates the `events-dlq` dead-letter queue  
+- Creates the `deliver-dlq` dead-letter queue
+- Creates the `events` main SQS queue (with redrive policy to `events-dlq` after 5 receives)  
+- Creates the `Events` DynamoDB table, keyed by `client_id` (HASH) and `event_time` (RANGE), with a stream on new images  
+- Creates the `routes` DynamoDB table, keyed by `client_id`  
+- Seeds the `routes` table with a test mapping for `client-123 to http://mock-sink:8080`.
+
+### Usage
+
+Once the deployment is ready, you can start using the deployment. The send-*.sh scripts in the scripts folder will perform a number of sample event sends to the SQS. 
 
 ## Project Structure
 
@@ -118,12 +125,21 @@ This script performs the following:
 │   └── utils        # Helper functions
 ├── schema
 │   └── event_schema.json
+├── localstack-scripts
+│   ├── localstack-init.sh                # Bootstrap script
+│   ├── wait-for-queue.sh                 # Waits for the queue to be ready
+│   ├── wait-for-table-and-queue.sh       # Waits for the table and queue to be ready
 ├── scripts
-│   ├── localstack-init.sh      # Bootstrap script
-│   ├── send-sqs-event.sh       # Manual test event injector
-│   ├── event.json              # Event payload for send-sqs-event.sh
-├── Dockerfile.*                # Separate Dockerfiles per service
-├── docker-compose.yml          # Compose services (localstack, processor, deliver)
+│   ├── check-*-dlq.sh                    # Check the contents of the dlqs
+│   ├── check-dynamodb.sh                 # Check the contents of DynamoDB
+│   ├── check-sqs.sh                      # Check the contents of events queue
+│   ├── redrive-dlq-to-sqs.sh             # Starts a redrive from the dlq to the events queue
+│   ├── send-bad-client-sqs-event.sh      # Sends an event with a client-id that has no route.
+│   ├── send-bad-data-sqs-event.sh        # Sends an event where data is a string not an object
+│   ├── send-good-sqs-event.sh            # Sends a good event
+│   ├── *.json                            # Event json data to be used with send-*.sh scripts
+├── Dockerfile.*                          # Separate Dockerfiles per service
+├── docker-compose.yml                    # Compose services (localstack, processor, deliver)
 └── README.md
 ```
 
@@ -134,4 +150,5 @@ This script performs the following:
   - Authentication and authorization
   - Retry strategies and exponential backoff
   - Monitoring, tracing, and metrics for observability
-
+  - An automated testing suite.
+  - An IAC deployment for deploying actual infrastructure.

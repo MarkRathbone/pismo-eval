@@ -12,7 +12,7 @@ RUN go mod download
 COPY . .
 RUN go build -o main ./cmd/processor
 
-COPY scripts/wait-for-queue.sh /app/wait-for-queue.sh
+COPY localstack-scripts/wait-for-queue.sh /app/wait-for-queue.sh
 RUN chmod +x /app/wait-for-queue.sh
 
 ENTRYPOINT ["/app/wait-for-queue.sh", "./main"]

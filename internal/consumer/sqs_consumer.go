@@ -8,36 +8,57 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 )
 
-type handlerFunc func(string) error
+type handlerFunc func(ctx context.Context, payload string) error
 
-func StartConsumer(sqsClient *sqs.Client, queueURL string, handler handlerFunc) {
+func StartConsumer(ctx context.Context, sqsClient *sqs.Client, queueURL string, handler handlerFunc) error {
 	for {
-		out, err := sqsClient.ReceiveMessage(context.TODO(), &sqs.ReceiveMessageInput{
+		select {
+		case <-ctx.Done():
+			log.Println("Consumer: context canceled, exiting StartConsumer")
+			return nil
+		default:
+		}
+
+		out, err := sqsClient.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
 			QueueUrl:            &queueURL,
 			MaxNumberOfMessages: 10,
 			WaitTimeSeconds:     5,
 		})
 		if err != nil {
 			log.Println("Receive error:", err)
-			time.Sleep(time.Second)
+			select {
+			case <-time.After(time.Second):
+			case <-ctx.Done():
+				return nil
+			}
 			continue
 		}
 
 		for _, msg := range out.Messages {
-			if err := handler(*msg.Body); err != nil {
+			if err := handler(ctx, *msg.Body); err != nil {
 				log.Printf("handler error for message %q: %v", *msg.MessageId, err)
 				continue
 			}
 
-			_, err := sqsClient.DeleteMessage(context.TODO(), &sqs.DeleteMessageInput{
+			select {
+			case <-ctx.Done():
+				log.Println("Consumer: context canceled before delete, exiting")
+				return nil
+			default:
+			}
+			if _, err := sqsClient.DeleteMessage(ctx, &sqs.DeleteMessageInput{
 				QueueUrl:      &queueURL,
 				ReceiptHandle: msg.ReceiptHandle,
-			})
-			if err != nil {
+			}); err != nil {
 				log.Println("Delete error:", err)
 			}
 		}
 
-		time.Sleep(1 * time.Second)
+		select {
+		case <-time.After(1 * time.Second):
+		case <-ctx.Done():
+			log.Println("Consumer: context canceled during throttle, exiting")
+			return nil
+		}
 	}
 }

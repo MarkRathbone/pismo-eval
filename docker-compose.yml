@@ -5,8 +5,7 @@ services:
     ports:
       - "4566:4566"
     environment:
-      - SERVICES=sqs,dynamodb,dynamodbstreams
-      - DEFAULT_REGION=eu-west-1
+      - SERVICES=sqs,dynamodb,dynamodbstreams,iam,sts
     volumes:
       - localstack-data:/var/lib/localstack
     healthcheck:
@@ -19,7 +18,7 @@ services:
     image: amazon/aws-cli
     container_name: pismo-eval-localstack-init
     volumes:
-      - ./scripts/localstack-init.sh:/init.sh
+      - ./localstack-scripts/localstack-init.sh:/init.sh
     entrypoint: ["/bin/sh", "/init.sh"]
     depends_on:
       - localstack
@@ -36,12 +35,15 @@ services:
       - localstack
       - localstack-init
     environment:
+        # don't do this in a real environment! mount secrets via a proper method 
+        # i.e. mounting to the pod, irsa, ecs task, instance profiles!
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_REGION=eu-west-1
       - AWS_ENDPOINT=http://localstack:4566
       - QUEUE_NAME=events
       - DIRECT_DISPATCH=true
+      - DELIVER_DLQ_URL=http://localstack:4566/000000000000/deliver-dlq
 
   deliver:
     build:
@@ -58,6 +60,7 @@ services:
       - AWS_ENDPOINT=http://localstack:4566
       - QUEUE_NAME=events
       - ROUTES_TABLE=routes
+      - DELIVER_DLQ_URL=http://localstack:4566/000000000000/deliver-dlq
 
   mock-sink:
     image: hashicorp/http-echo

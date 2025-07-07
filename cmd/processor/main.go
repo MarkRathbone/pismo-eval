@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"event-processor/internal/consumer"
 	"event-processor/internal/processor"
@@ -16,19 +18,26 @@ import (
 func main() {
 	log.Println("Starting Event Processor...")
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		log.Println("Shutdown signal received, canceling...")
+		cancel()
+	}()
+
 	endpoint := os.Getenv("AWS_ENDPOINT")
 	region := os.Getenv("AWS_REGION")
 	if endpoint == "" || region == "" {
 		log.Fatal("Both AWS_ENDPOINT and AWS_REGION must be set")
 	}
-
-	cfg, err := config.LoadDefaultConfig(context.TODO(),
-		config.WithRegion(region),
-	)
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	if err != nil {
 		log.Fatalf("Failed to load AWS config: %v", err)
 	}
-
 	sqsClient := sqs.NewFromConfig(cfg, func(o *sqs.Options) {
 		o.BaseEndpoint = aws.String(endpoint)
 	})
@@ -36,21 +45,24 @@ func main() {
 	var queueURL string
 	if envURL := os.Getenv("QUEUE_URL"); envURL != "" {
 		queueURL = envURL
-		log.Printf("Using QUEUE_URL from env: %s", queueURL)
 	} else {
-		queueName := os.Getenv("QUEUE_NAME")
-		if queueName == "" {
-			queueName = "events"
+		name := os.Getenv("QUEUE_NAME")
+		if name == "" {
+			name = "events"
 		}
-		qOut, err := sqsClient.GetQueueUrl(context.TODO(), &sqs.GetQueueUrlInput{
-			QueueName: aws.String(queueName),
+		qOut, err := sqsClient.GetQueueUrl(ctx, &sqs.GetQueueUrlInput{
+			QueueName: aws.String(name),
 		})
 		if err != nil {
-			log.Fatalf("Unable to get queue URL for %s: %v", queueName, err)
+			log.Fatalf("Unable to get queue URL for %s: %v", name, err)
 		}
 		queueURL = aws.ToString(qOut.QueueUrl)
-		log.Printf("Resolved queue URL for %s: %s", queueName, queueURL)
+	}
+	log.Printf("Consuming from %s", queueURL)
+
+	if err := consumer.StartConsumer(ctx, sqsClient, queueURL, processor.HandleMessage); err != nil {
+		log.Printf("Error running consumer: %v", err)
 	}
 
-	consumer.StartConsumer(sqsClient, queueURL, processor.HandleMessage)
+	log.Println("Event Processor shut down cleanly.")
 }
